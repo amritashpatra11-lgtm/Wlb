@@ -1,0 +1,1152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Battery — Daily Time Tracker</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:         #080b12;
+    --surface:    rgba(255,255,255,0.045);
+    --border:     rgba(255,255,255,0.08);
+    --text:       #e8eaf0;
+    --text-dim:   rgba(232,234,240,0.45);
+    --text-muted: rgba(232,234,240,0.25);
+
+    --study:   #38bdf8;
+    --coding:  #a78bfa;
+    --work:    #fb923c;
+    --sleep:   #34d399;
+    --others:  #f472b6;
+
+    --study-g:   #0ea5e9, #38bdf8;
+    --coding-g:  #7c3aed, #a78bfa;
+    --work-g:    #ea580c, #fb923c;
+    --sleep-g:   #059669, #34d399;
+    --others-g:  #db2777, #f472b6;
+
+    --ring-size: 320px;
+    --ring-stroke: 22;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { height: 100%; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100%;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* ── ANIMATED BACKGROUND ── */
+  .bg-orbs {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    overflow: hidden;
+  }
+  .orb {
+    position: absolute; border-radius: 50%;
+    filter: blur(80px); opacity: 0.18;
+    animation: orbDrift 18s ease-in-out infinite alternate;
+  }
+  .orb-1 { width: 500px; height: 500px; background: #7c3aed; top: -180px; left: -120px; animation-duration: 20s; }
+  .orb-2 { width: 400px; height: 400px; background: #0ea5e9; bottom: -120px; right: -100px; animation-duration: 16s; animation-delay: -6s; }
+  .orb-3 { width: 300px; height: 300px; background: #059669; top: 40%; left: 60%; animation-duration: 22s; animation-delay: -10s; }
+  @keyframes orbDrift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(30px, -40px) scale(1.08); }
+    100% { transform: translate(-20px, 30px) scale(0.95); }
+  }
+
+  /* ── GRID NOISE ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* ── LAYOUT ── */
+  .app {
+    position: relative; z-index: 1;
+    max-width: 1280px; margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 36px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #7c3aed, #38bdf8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .logo-sub  { font-size: 11px; color: var(--text-dim); font-weight: 400; letter-spacing: 0.5px; text-transform: uppercase; }
+  .date-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 7px 14px; border-radius: 100px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── GLASS CARD ── */
+  .glass {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* ── CENTER PANEL (Ring) ── */
+  .ring-panel {
+    padding: 36px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+  }
+
+  /* ── SVG RING ── */
+  .ring-wrapper {
+    position: relative;
+    width: var(--ring-size);
+    height: var(--ring-size);
+  }
+  .ring-svg {
+    width: 100%; height: 100%;
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+  .ring-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.05);
+    stroke-width: var(--ring-stroke);
+  }
+
+  /* Segment tracks */
+  .ring-segment {
+    fill: none;
+    stroke-width: var(--ring-stroke);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.9s var(--ease),
+                stroke-dasharray 0.9s var(--ease),
+                opacity 0.4s ease;
+  }
+
+  /* Gradient defs loaded via JS */
+
+  /* Center label */
+  .ring-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+  .ring-label {
+    font-size: 11px; font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .ring-pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 62px; font-weight: 400; line-height: 1;
+    letter-spacing: -3px;
+    background: linear-gradient(135deg, #e8eaf0 40%, rgba(232,234,240,0.55));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .ring-pct span { font-size: 28px; letter-spacing: -1px; }
+  .ring-sub {
+    font-size: 12px; color: var(--text-dim); font-weight: 400;
+  }
+  .ring-glow {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(120,100,255,0.1) 0%, transparent 65%);
+    animation: pulseGlow 3s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes pulseGlow {
+    from { opacity: 0.5; transform: scale(0.97); }
+    to   { opacity: 1;   transform: scale(1.03); }
+  }
+
+  /* ── LEGEND ── */
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    width: 100%;
+  }
+  .legend-item {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 5px;
+    padding: 12px 6px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s, border-color 0.2s;
+  }
+  .legend-item:hover { background: rgba(255,255,255,0.07); transform: translateY(-2px); }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .legend-name { font-size: 11px; color: var(--text-dim); font-weight: 500; }
+  .legend-hrs  { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 500; }
+  .legend-pct  { font-size: 10px; color: var(--text-muted); }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── INPUT CARD ── */
+  .input-card { padding: 28px 24px; }
+  .card-title {
+    font-size: 13px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 22px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card-title-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+
+  .input-rows { display: flex; flex-direction: column; gap: 16px; }
+
+  .input-row {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .input-row-label {
+    display: flex; align-items: center; gap: 8px;
+    width: 90px; flex-shrink: 0;
+  }
+  .cat-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .cat-name { font-size: 13px; font-weight: 500; }
+
+  .slider-wrap { flex: 1; position: relative; }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.1);
+    outline: none; cursor: pointer;
+    transition: background 0.3s;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.4);
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 5px rgba(255,255,255,0.2), 0 2px 12px rgba(0,0,0,0.5);
+  }
+
+  .num-input {
+    width: 58px; flex-shrink: 0;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 7px 10px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .num-input:focus {
+    border-color: rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+  }
+  /* remove spin arrows */
+  .num-input::-webkit-inner-spin-button,
+  .num-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  /* ── SUMMARY BAR ── */
+  .summary-bar {
+    margin-top: 22px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .summary-stat { display: flex; flex-direction: column; gap: 2px; }
+  .summary-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 20px; font-weight: 400;
+    letter-spacing: -0.5px;
+  }
+  .summary-lbl { font-size: 11px; color: var(--text-dim); }
+
+  .used-bar-wrap {
+    width: 100%; height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-top: 14px;
+  }
+  .used-bar {
+    height: 100%; border-radius: 100px;
+    background: linear-gradient(90deg, #7c3aed, #38bdf8, #fb923c);
+    transition: width 0.8s var(--ease);
+  }
+
+  .warning-msg {
+    font-size: 12px; color: #fb923c;
+    display: none; margin-top: 8px;
+    animation: shake 0.3s ease;
+  }
+  .warning-msg.show { display: block; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25%      { transform: translateX(-4px); }
+    75%      { transform: translateX(4px); }
+  }
+
+  /* ── INSIGHTS CARD ── */
+  .insights-card { padding: 24px; }
+  .insight-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-top: 4px;
+  }
+  .insight-tile {
+    padding: 16px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: background 0.2s;
+  }
+  .insight-tile:hover { background: rgba(255,255,255,0.06); }
+  .insight-ico { font-size: 20px; }
+  .insight-label { font-size: 11px; color: var(--text-dim); }
+  .insight-val   { font-size: 15px; font-weight: 600; }
+  .insight-sub   { font-size: 11px; color: var(--text-muted); }
+
+  /* Productivity score bar */
+  .score-bar-wrap {
+    width: 100%; height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 100px; overflow: hidden;
+    margin-top: 4px;
+  }
+  .score-bar {
+    height: 100%; border-radius: 100px;
+    background: linear-gradient(90deg, #a78bfa, #38bdf8);
+    transition: width 0.8s var(--ease);
+  }
+
+  /* Sleep health */
+  .sleep-dots {
+    display: flex; gap: 4px; margin-top: 2px;
+  }
+  .sleep-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    transition: background 0.3s;
+  }
+  .sleep-dot.on { background: #34d399; box-shadow: 0 0 6px #34d399; }
+
+  /* ── STREAK ── */
+  .streak-card { padding: 18px 24px; }
+  .streak-inner {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .streak-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 40px; font-weight: 400; line-height: 1;
+    background: linear-gradient(135deg, #fb923c, #f472b6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .streak-txt { font-size: 13px; color: var(--text-dim); }
+  .streak-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── CATEGORY DETAIL ── */
+  .cat-bars { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+  .cat-bar-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cat-bar-label { font-size: 12px; width: 56px; color: var(--text-dim); }
+  .cat-bar-track {
+    flex: 1; height: 6px;
+    background: rgba(255,255,255,0.08); border-radius: 100px;
+    overflow: hidden;
+  }
+  .cat-bar-fill {
+    height: 100%; border-radius: 100px;
+    transition: width 0.8s var(--ease);
+  }
+  .cat-bar-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--text-dim); width: 32px; text-align: right;
+  }
+
+  /* ── PARTICLES ── */
+  #particles {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute; border-radius: 50%;
+    animation: particleFly linear infinite;
+    opacity: 0;
+  }
+  @keyframes particleFly {
+    0%   { transform: translateY(0) scale(1);   opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 0.4; }
+    100% { transform: translateY(-120vh) scale(0.4); opacity: 0; }
+  }
+
+  /* ── RESET BTN ── */
+  .btn-reset {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text-dim);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 500;
+    padding: 8px 18px; border-radius: 100px;
+    cursor: pointer; letter-spacing: 0.3px;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .btn-reset:hover {
+    background: rgba(255,255,255,0.12);
+    color: var(--text);
+    border-color: rgba(255,255,255,0.2);
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    :root { --ring-size: 280px; }
+    .legend { grid-template-columns: repeat(5, 1fr); }
+  }
+  @media (max-width: 500px) {
+    :root { --ring-size: 240px; }
+    .ring-pct { font-size: 48px; }
+    .legend  { grid-template-columns: repeat(3, 1fr); }
+    header   { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .insight-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(30,34,50,0.95);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 100px;
+    padding: 10px 22px;
+    font-size: 13px; color: var(--text-dim);
+    backdrop-filter: blur(16px);
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- Background -->
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+<canvas id="particles"></canvas>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div>
+        <div class="logo-text">Life Battery</div>
+        <div class="logo-sub">Daily Time Tracker</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
+      <div class="date-badge" id="dateBadge"></div>
+    </div>
+  </header>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT: RING + LEGEND -->
+    <div class="glass ring-panel">
+
+      <!-- SVG RING -->
+      <div class="ring-wrapper">
+        <div class="ring-glow"></div>
+        <svg class="ring-svg" viewBox="0 0 320 320" id="ringsvg">
+          <defs>
+            <linearGradient id="g-study"  x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%"   stop-color="#0ea5e9"/>
+              <stop offset="100%" stop-color="#38bdf8"/>
+            </linearGradient>
+            <linearGradient id="g-coding" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%"   stop-color="#7c3aed"/>
+              <stop offset="100%" stop-color="#a78bfa"/>
+            </linearGradient>
+            <linearGradient id="g-work"   x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%"   stop-color="#ea580c"/>
+              <stop offset="100%" stop-color="#fb923c"/>
+            </linearGradient>
+            <linearGradient id="g-sleep"  x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%"   stop-color="#059669"/>
+              <stop offset="100%" stop-color="#34d399"/>
+            </linearGradient>
+            <linearGradient id="g-others" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%"   stop-color="#db2777"/>
+              <stop offset="100%" stop-color="#f472b6"/>
+            </linearGradient>
+            <!-- glow filters -->
+            <filter id="glow-study">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- Background track -->
+          <circle class="ring-bg" cx="160" cy="160" r="130"/>
+
+          <!-- Segments (drawn by JS) -->
+          <circle id="seg-sleep"  class="ring-segment" cx="160" cy="160" r="130" stroke="url(#g-sleep)"  stroke-dasharray="0 817"/>
+          <circle id="seg-others" class="ring-segment" cx="160" cy="160" r="130" stroke="url(#g-others)" stroke-dasharray="0 817"/>
+          <circle id="seg-work"   class="ring-segment" cx="160" cy="160" r="130" stroke="url(#g-work)"   stroke-dasharray="0 817"/>
+          <circle id="seg-coding" class="ring-segment" cx="160" cy="160" r="130" stroke="url(#g-coding)" stroke-dasharray="0 817"/>
+          <circle id="seg-study"  class="ring-segment" cx="160" cy="160" r="130" stroke="url(#g-study)"  stroke-dasharray="0 817"/>
+        </svg>
+
+        <!-- Center text -->
+        <div class="ring-center">
+          <div class="ring-label">Life Battery</div>
+          <div class="ring-pct" id="ringPct">0<span>%</span></div>
+          <div class="ring-sub" id="ringRemaining">24h remaining</div>
+        </div>
+      </div>
+
+      <!-- MINI BAR CHART -->
+      <div class="cat-bars" style="width:100%">
+        <div id="catBarsContainer"></div>
+      </div>
+
+      <!-- LEGEND -->
+      <div class="legend" id="legend"></div>
+
+    </div>
+
+    <!-- RIGHT: INPUTS + INSIGHTS -->
+    <div class="right-panel">
+
+      <!-- INPUT CARD -->
+      <div class="glass input-card">
+        <div class="card-title">
+          <div class="card-title-dot" style="background:#a78bfa; box-shadow:0 0 6px #a78bfa"></div>
+          Time Allocations
+        </div>
+        <div class="input-rows" id="inputRows"></div>
+
+        <!-- Progress bar + summary -->
+        <div class="used-bar-wrap"><div class="used-bar" id="usedBar" style="width:0%"></div></div>
+        <div class="warning-msg" id="warningMsg">⚠ Total exceeds 24 hours</div>
+        <div class="summary-bar">
+          <div class="summary-stat">
+            <div class="summary-val" id="statUsed">0h 0m</div>
+            <div class="summary-lbl">Used</div>
+          </div>
+          <div class="summary-stat" style="text-align:center">
+            <div class="summary-val" id="statRemaining">24h 0m</div>
+            <div class="summary-lbl">Remaining</div>
+          </div>
+          <div class="summary-stat" style="text-align:right">
+            <div class="summary-val" id="statPct">0%</div>
+            <div class="summary-lbl">Of Day</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INSIGHTS CARD -->
+      <div class="glass insights-card">
+        <div class="card-title">
+          <div class="card-title-dot" style="background:#38bdf8; box-shadow:0 0 6px #38bdf8"></div>
+          Daily Insights
+        </div>
+        <div class="insight-grid">
+          <div class="insight-tile">
+            <div class="insight-ico">🏆</div>
+            <div class="insight-label">Most Used</div>
+            <div class="insight-val" id="mostUsed">—</div>
+            <div class="insight-sub" id="mostUsedHrs">—</div>
+          </div>
+          <div class="insight-tile">
+            <div class="insight-ico">🌱</div>
+            <div class="insight-label">Least Used</div>
+            <div class="insight-val" id="leastUsed">—</div>
+            <div class="insight-sub" id="leastUsedHrs">—</div>
+          </div>
+          <div class="insight-tile" style="grid-column: 1/-1">
+            <div class="insight-ico">⚡</div>
+            <div class="insight-label">Productivity Score</div>
+            <div class="insight-val" id="prodScore">0 / 100</div>
+            <div class="score-bar-wrap"><div class="score-bar" id="scoreFill" style="width:0%"></div></div>
+            <div class="insight-sub" id="prodHint">Log Study + Coding to see score</div>
+          </div>
+          <div class="insight-tile" style="grid-column: 1/-1">
+            <div class="insight-ico">😴</div>
+            <div class="insight-label">Sleep Health</div>
+            <div class="insight-val" id="sleepHealth">—</div>
+            <div class="sleep-dots" id="sleepDots"></div>
+            <div class="insight-sub" id="sleepHint">Recommended: 7–9 hours</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STREAK (localStorage) -->
+      <div class="glass streak-card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="streak-inner">
+            <div class="streak-number" id="streakNum">0</div>
+            <div>
+              <div class="streak-txt">Day streak 🔥</div>
+              <div class="streak-sub">Keep tracking daily</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);text-align:right">
+            Last saved<br><span id="lastSaved" style="color:var(--text-dim)">never</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   LIFE BATTERY — Daily Time Tracker
+   Pure Vanilla JS · SVG Ring · Local Storage
+═══════════════════════════════════════════════════ */
+
+// ── CONFIG ──────────────────────────────────────────
+const CATEGORIES = [
+  { id: 'study',  label: 'Study',  color: '#38bdf8', max: 16 },
+  { id: 'coding', label: 'Coding', color: '#a78bfa', max: 16 },
+  { id: 'work',   label: 'Work',   color: '#fb923c', max: 16 },
+  { id: 'sleep',  label: 'Sleep',  color: '#34d399', max: 12 },
+  { id: 'others', label: 'Others', color: '#f472b6', max: 16 },
+];
+const TOTAL_MINUTES = 1440; // 24 hours
+const RING_R = 130;
+const CIRCUMFERENCE = 2 * Math.PI * RING_R; // ≈ 816.8
+
+// ── STATE ────────────────────────────────────────────
+let state = { study: 0, coding: 0, work: 0, sleep: 0, others: 0 };
+let animFrame = null;
+let targetState = { ...state };
+let animState   = { ...state };
+
+// ── DATE ─────────────────────────────────────────────
+const today = new Date();
+document.getElementById('dateBadge').textContent =
+  today.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+
+// ── BUILD INPUT ROWS ─────────────────────────────────
+function buildInputs() {
+  const container = document.getElementById('inputRows');
+  container.innerHTML = '';
+
+  CATEGORIES.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = 'input-row';
+    row.innerHTML = `
+      <div class="input-row-label">
+        <div class="cat-dot" style="color:${cat.color};background:${cat.color};"></div>
+        <div class="cat-name">${cat.label}</div>
+      </div>
+      <div class="slider-wrap">
+        <input type="range" id="slider-${cat.id}" min="0" max="${cat.max}" step="0.25"
+               value="${state[cat.id]}"
+               style="--thumb-color:${cat.color}"
+               oninput="onSlider('${cat.id}', this.value)">
+      </div>
+      <input type="number" class="num-input" id="num-${cat.id}"
+             min="0" max="${cat.max}" step="0.25" value="${state[cat.id]}"
+             oninput="onNum('${cat.id}', this.value)">
+    `;
+    container.appendChild(row);
+
+    // Color the slider track dynamically
+    styleSlider(cat.id, state[cat.id], cat.max, cat.color);
+  });
+}
+
+function styleSlider(id, val, max, color) {
+  const slider = document.getElementById(`slider-${id}`);
+  if (!slider) return;
+  const pct = (val / max) * 100;
+  slider.style.background = `linear-gradient(to right, ${color} ${pct}%, rgba(255,255,255,0.1) ${pct}%)`;
+}
+
+// ── BUILD LEGEND ─────────────────────────────────────
+function buildLegend() {
+  const container = document.getElementById('legend');
+  container.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.id = `leg-${cat.id}`;
+    const hrs  = state[cat.id] || 0;
+    const pct  = ((hrs * 60) / TOTAL_MINUTES * 100).toFixed(0);
+    item.innerHTML = `
+      <div class="legend-dot" style="color:${cat.color};background:${cat.color}"></div>
+      <div class="legend-name">${cat.label}</div>
+      <div class="legend-hrs" style="color:${cat.color}" id="leg-hrs-${cat.id}">${hrs}h</div>
+      <div class="legend-pct" id="leg-pct-${cat.id}">${pct}%</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+// ── BUILD CAT BARS ────────────────────────────────────
+function buildCatBars() {
+  const container = document.getElementById('catBarsContainer');
+  container.innerHTML = '';
+  CATEGORIES.forEach(cat => {
+    const row = document.createElement('div');
+    row.className = 'cat-bar-row';
+    row.innerHTML = `
+      <div class="cat-bar-label" style="color:${cat.color}">${cat.label}</div>
+      <div class="cat-bar-track">
+        <div class="cat-bar-fill" id="cbar-${cat.id}"
+             style="background:${cat.color};width:0%"></div>
+      </div>
+      <div class="cat-bar-val" id="cbarval-${cat.id}">0h</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// ── INPUT HANDLERS ────────────────────────────────────
+function onSlider(id, val) {
+  val = parseFloat(val) || 0;
+  if (!validateUpdate(id, val)) return;
+  state[id] = val;
+  document.getElementById(`num-${id}`).value = val;
+  CATEGORIES.forEach(c => styleSlider(c.id, state[c.id], c.max, c.color));
+  refresh();
+  saveData();
+}
+
+function onNum(id, val) {
+  val = parseFloat(val) || 0;
+  const cat = CATEGORIES.find(c => c.id === id);
+  val = Math.min(Math.max(val, 0), cat.max);
+  if (!validateUpdate(id, val)) return;
+  state[id] = val;
+  document.getElementById(`slider-${id}`).value = val;
+  CATEGORIES.forEach(c => styleSlider(c.id, state[c.id], c.max, c.color));
+  refresh();
+  saveData();
+}
+
+function validateUpdate(id, newVal) {
+  const total = Object.entries(state)
+    .filter(([k]) => k !== id)
+    .reduce((s, [,v]) => s + v, 0) + newVal;
+  const warn = document.getElementById('warningMsg');
+  if (total * 60 > TOTAL_MINUTES) {
+    warn.classList.add('show');
+    state[id] = (TOTAL_MINUTES/60) - (total - newVal); // clamp
+    state[id] = Math.max(0, parseFloat(state[id].toFixed(4)));
+    document.getElementById(`slider-${id}`).value = state[id];
+    document.getElementById(`num-${id}`).value    = state[id];
+    return false;
+  }
+  warn.classList.remove('show');
+  return true;
+}
+
+// ── REFRESH UI ────────────────────────────────────────
+function refresh() {
+  updateLegend();
+  updateCatBars();
+  updateSummary();
+  animateRing();
+  updateInsights();
+}
+
+function updateLegend() {
+  CATEGORIES.forEach(cat => {
+    const hrs = state[cat.id] || 0;
+    const pct = ((hrs * 60) / TOTAL_MINUTES * 100).toFixed(0);
+    const hrsEl = document.getElementById(`leg-hrs-${cat.id}`);
+    const pctEl = document.getElementById(`leg-pct-${cat.id}`);
+    if (hrsEl) hrsEl.textContent = `${hrs}h`;
+    if (pctEl) pctEl.textContent = `${pct}%`;
+  });
+}
+
+function updateCatBars() {
+  CATEGORIES.forEach(cat => {
+    const hrs = state[cat.id] || 0;
+    const pct = (hrs / 24 * 100).toFixed(1);
+    const fill = document.getElementById(`cbar-${cat.id}`);
+    const val  = document.getElementById(`cbarval-${cat.id}`);
+    if (fill) fill.style.width = pct + '%';
+    if (val)  val.textContent  = `${hrs}h`;
+  });
+}
+
+function updateSummary() {
+  const totalHrs = Object.values(state).reduce((a, b) => a + b, 0);
+  const usedMins = totalHrs * 60;
+  const remMins  = TOTAL_MINUTES - usedMins;
+  const pct      = Math.min((usedMins / TOTAL_MINUTES) * 100, 100);
+
+  document.getElementById('ringPct').innerHTML =
+    `${Math.round(pct)}<span>%</span>`;
+  document.getElementById('ringRemaining').textContent =
+    `${formatTime(remMins)} remaining`;
+
+  const usedH = Math.floor(totalHrs);
+  const usedM = Math.round((totalHrs - usedH) * 60);
+  const remH  = Math.floor(remMins / 60);
+  const remM  = Math.round(remMins % 60);
+
+  document.getElementById('statUsed').textContent       = `${usedH}h ${usedM}m`;
+  document.getElementById('statRemaining').textContent  = `${remH}h ${remM}m`;
+  document.getElementById('statPct').textContent        = `${Math.round(pct)}%`;
+  document.getElementById('usedBar').style.width        = pct + '%';
+}
+
+function formatTime(mins) {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return `${h}h ${m}m`;
+}
+
+// ── RING ANIMATION ─────────────────────────────────────
+function animateRing() {
+  targetState = { ...state };
+
+  if (animFrame) return; // already running
+
+  const startState = { ...animState };
+  const startTime  = performance.now();
+  const duration   = 900; // ms
+
+  function easeInOut(t) {
+    return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+  }
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const t       = Math.min(elapsed / duration, 1);
+    const e       = easeInOut(t);
+
+    // Interpolate each category
+    CATEGORIES.forEach(cat => {
+      animState[cat.id] = startState[cat.id] +
+        (targetState[cat.id] - startState[cat.id]) * e;
+    });
+
+    drawRing();
+
+    if (t < 1) {
+      animFrame = requestAnimationFrame(step);
+    } else {
+      animState = { ...targetState };
+      drawRing();
+      animFrame = null;
+    }
+  }
+
+  animFrame = requestAnimationFrame(step);
+}
+
+function drawRing() {
+  const totalMins = CATEGORIES.reduce((s, c) => s + animState[c.id] * 60, 0);
+  let offset = 0;
+
+  // Draw in reverse order so first cat is on top
+  const order = ['sleep', 'others', 'work', 'coding', 'study'];
+
+  order.forEach(id => {
+    const cat  = CATEGORIES.find(c => c.id === id);
+    const mins = animState[id] * 60;
+    const frac = mins / TOTAL_MINUTES;
+    const len  = frac * CIRCUMFERENCE;
+    const gap  = CIRCUMFERENCE - len;
+
+    const el = document.getElementById(`seg-${id}`);
+    if (!el) return;
+
+    // stroke-dasharray = [visible length, gap]
+    // stroke-dashoffset shifts start position
+    el.style.strokeDasharray  = `${len} ${CIRCUMFERENCE}`;
+    el.style.strokeDashoffset = `-${offset}`;
+    offset += len;
+  });
+}
+
+// ── INSIGHTS ──────────────────────────────────────────
+function updateInsights() {
+  const entries = CATEGORIES.map(c => ({ label: c.label, hrs: state[c.id], color: c.color }));
+  const nonZero = entries.filter(e => e.hrs > 0);
+
+  // Most / Least
+  if (nonZero.length > 0) {
+    const most  = nonZero.reduce((a, b) => a.hrs > b.hrs ? a : b);
+    const least = nonZero.reduce((a, b) => a.hrs < b.hrs ? a : b);
+    document.getElementById('mostUsed').textContent    = most.label;
+    document.getElementById('mostUsed').style.color    = most.color;
+    document.getElementById('mostUsedHrs').textContent = `${most.hrs}h logged`;
+    document.getElementById('leastUsed').textContent    = least.label;
+    document.getElementById('leastUsed').style.color    = least.color;
+    document.getElementById('leastUsedHrs').textContent = `${least.hrs}h logged`;
+  } else {
+    ['mostUsed','leastUsed'].forEach(id => {
+      document.getElementById(id).textContent = '—';
+      document.getElementById(id).style.color = '';
+    });
+    ['mostUsedHrs','leastUsedHrs'].forEach(id =>
+      document.getElementById(id).textContent = '—'
+    );
+  }
+
+  // Productivity score: Study + Coding normalised over 10h max = 100
+  const prodHrs = (state.study || 0) + (state.coding || 0);
+  const score   = Math.min(Math.round((prodHrs / 10) * 100), 100);
+  document.getElementById('prodScore').textContent = `${score} / 100`;
+  document.getElementById('scoreFill').style.width  = score + '%';
+  const hints = ['Log Study + Coding to see score','Warm up!','Getting there!','Good focus!','Excellent output!','Exceptional day! 🚀'];
+  const hintIdx = score === 0 ? 0 : Math.floor(score / 20);
+  document.getElementById('prodHint').textContent = hints[Math.min(hintIdx, hints.length - 1)];
+
+  // Sleep health
+  const sh   = state.sleep || 0;
+  const dots = document.getElementById('sleepDots');
+  const MAX_DOTS = 9;
+  const filled = Math.round((sh / 9) * MAX_DOTS);
+  let dotsHTML = '';
+  for (let i = 0; i < MAX_DOTS; i++) {
+    dotsHTML += `<div class="sleep-dot ${i < filled ? 'on' : ''}"></div>`;
+  }
+  dots.innerHTML = dotsHTML;
+
+  let sleepStatus = '—';
+  let sleepHint   = 'Set your sleep hours above';
+  if (sh > 0) {
+    if      (sh < 5)  { sleepStatus = 'Poor 😞';     sleepHint = 'Under 5h is harmful long-term'; }
+    else if (sh < 7)  { sleepStatus = 'Low 😐';       sleepHint = 'Try to get at least 7 hours'; }
+    else if (sh <= 9) { sleepStatus = 'Optimal 😊';   sleepHint = `${sh}h — perfect range!`; }
+    else              { sleepStatus = 'Excess 🛌';     sleepHint = 'Over 9h may affect energy'; }
+  }
+  document.getElementById('sleepHealth').textContent = sleepStatus;
+  document.getElementById('sleepHint').textContent   = sleepHint;
+}
+
+// ── LOCAL STORAGE ──────────────────────────────────────
+const STORAGE_KEY = 'lifebattery-v2';
+
+function saveData() {
+  const now = new Date();
+  const payload = {
+    state,
+    date:   now.toISOString().slice(0, 10),
+    savedAt: now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' }),
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  document.getElementById('lastSaved').textContent = payload.savedAt;
+  updateStreak(payload.date);
+  showToast('Progress saved');
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const payload = JSON.parse(raw);
+    state = { ...state, ...payload.state };
+    document.getElementById('lastSaved').textContent = payload.savedAt || 'today';
+    updateStreak(payload.date);
+  } catch (e) { /* ignore */ }
+}
+
+function updateStreak(date) {
+  const STREAK_KEY = 'lifebattery-streak';
+  try {
+    let streak = JSON.parse(localStorage.getItem(STREAK_KEY) || '{"count":0,"last":""}');
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (streak.last === today) {
+      // same day, no change
+    } else if (streak.last === yesterday) {
+      streak.count++;
+      streak.last = today;
+    } else if (streak.last !== today) {
+      streak.count = 1;
+      streak.last  = today;
+    }
+    localStorage.setItem(STREAK_KEY, JSON.stringify(streak));
+    document.getElementById('streakNum').textContent = streak.count;
+  } catch(e) {}
+}
+
+function resetAll() {
+  state = { study: 0, coding: 0, work: 0, sleep: 0, others: 0 };
+  animState  = { ...state };
+  targetState = { ...state };
+  if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+  buildInputs();
+  buildLegend();
+  drawRing();
+  refresh();
+  showToast('Reset complete');
+}
+
+// ── TOAST ──────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ── PARTICLES ─────────────────────────────────────────
+function initParticles() {
+  const canvas = document.getElementById('particles');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const COUNT = 35;
+  const COLORS = ['#38bdf8','#a78bfa','#fb923c','#34d399','#f472b6'];
+  const particles = Array.from({ length: COUNT }, () => makeParticle());
+
+  function makeParticle() {
+    return {
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight + window.innerHeight,
+      size: Math.random() * 2 + 0.5,
+      speed: Math.random() * 0.4 + 0.1,
+      opacity: 0,
+      maxOpacity: Math.random() * 0.3 + 0.05,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      life: 0,
+      maxLife: Math.random() * 300 + 150,
+    };
+  }
+
+  function drawParticles() {
+    ctx.clearRect(0, 0, W, H);
+    particles.forEach((p, i) => {
+      p.y     -= p.speed;
+      p.life++;
+      p.opacity = p.life < p.maxLife * 0.1
+        ? (p.life / (p.maxLife * 0.1)) * p.maxOpacity
+        : p.life > p.maxLife * 0.8
+        ? ((p.maxLife - p.life) / (p.maxLife * 0.2)) * p.maxOpacity
+        : p.maxOpacity;
+
+      if (p.life >= p.maxLife || p.y < -20) {
+        particles[i] = makeParticle();
+        particles[i].y = H + 10;
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.opacity;
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(drawParticles);
+  }
+  drawParticles();
+}
+
+// ── INIT ───────────────────────────────────────────────
+function init() {
+  loadData();
+  buildInputs();
+  buildLegend();
+  buildCatBars();
+
+  // Sync sliders to loaded state
+  CATEGORIES.forEach(cat => {
+    const sl = document.getElementById(`slider-${cat.id}`);
+    const nm = document.getElementById(`num-${cat.id}`);
+    if (sl) sl.value = state[cat.id];
+    if (nm) nm.value = state[cat.id];
+    styleSlider(cat.id, state[cat.id], cat.max, cat.color);
+  });
+
+  animState = { ...state };
+  drawRing();
+  refresh();
+  initParticles();
+
+  // Auto-save on change (debounced)
+  let saveTimer;
+  window.addEventListener('input', () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveData, 1200);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
